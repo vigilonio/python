@@ -1,8 +1,24 @@
-# `vigilon`
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/vigilonio/python/main/.github/assets/sigil-thin-dark-120.png" />
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/vigilonio/python/main/.github/assets/sigil-thin-dark-solid-120.png" />
+    <img src="https://raw.githubusercontent.com/vigilonio/python/main/.github/assets/sigil-thin-dark-solid-120.png" alt="Vigilon" width="100" />
+  </picture>
+</p>
 
-Vigilon OpenTelemetry bootstrap for Python apps: one `register()` call — or the zero-code `opentelemetry-instrument` launcher — wires OTLP trace export to Vigilon and auto-instruments FastAPI, Flask, and Django plus the common HTTP/database clients.
+<p align="center">
+  <a href="https://github.com/vigilonio/python/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-ISC-blue.svg" alt="License: ISC"></a>
+  <a href="https://pypi.org/project/vigilon/"><img src="https://img.shields.io/pypi/v/vigilon.svg" alt="PyPI"></a>
+  <a href="https://pypi.org/project/vigilon/"><img src="https://img.shields.io/pypi/pyversions/vigilon.svg" alt="Python versions"></a>
+</p>
 
-The distribution and import package are both named `vigilon`.
+# Vigilon Python SDK
+
+Official Python SDK for [Vigilon](https://vigilon.io).
+
+Vigilon is application monitoring for SaaS applications, based on OpenTelemetry. Out of the box it provides RESTful service and endpoint health, error monitoring and alerting, end-to-end tracing, and background job monitoring.
+
+The SDK sets up standard [OpenTelemetry](https://opentelemetry.io/) instrumentation for your app and exports it to Vigilon over OTLP, with no proprietary agent. One `register()` call, or the zero-code `opentelemetry-instrument` launcher, instruments FastAPI, Flask and Django, plus common HTTP and database clients.
 
 ## Install
 
@@ -10,9 +26,13 @@ The distribution and import package are both named `vigilon`.
 pip install vigilon
 ```
 
+Requires Python 3.10 or later.
+
 ## Quick start
 
-Call `register()` as the **first statement of your entrypoint**, before application modules import the frameworks being instrumented:
+Create an API key in the [Vigilon dashboard](https://app.vigilon.io) under your project's **Settings** page, **API Keys** tab.
+
+Then call `register()` as the **first statement of your entrypoint**, before application modules import the frameworks being instrumented:
 
 ```python
 import vigilon
@@ -33,6 +53,8 @@ Optional environment variables:
 
 - `VIGILON_OTEL_ENDPOINT` — override the OTLP HTTP base endpoint (traces go to `<endpoint>/v1/traces`); useful for local collectors and tests.
 - `VIGILON_EXCLUDED_URLS` — extra excluded-URL regexes, comma-separated (see below).
+
+Full product documentation is at [vigilon.io/docs](https://vigilon.io/docs).
 
 ## Zero-code bootstrap
 
@@ -180,19 +202,15 @@ with with_job_monitor(name="refresh-cache"):
 
 Vigilon detects the Lambda runtime via `AWS_LAMBDA_FUNCTION_NAME` and adds the AWS Lambda instrumentation automatically, which flushes traces at the end of each invocation. No extra configuration is needed.
 
-## Development
+## Support
 
-```bash
-uv sync
-uv run pytest
-uv run ruff check .
-uv run mypy
-```
+- Bugs and feature requests: [GitHub Issues](https://github.com/vigilonio/python/issues)
+- Security vulnerabilities: report them privately to [security@vigilon.io](mailto:security@vigilon.io) instead of opening a public issue.
 
-## Releasing
+## Contributing
 
-Releases go to [PyPI](https://pypi.org/project/vigilon/) from GitHub Actions via Trusted Publishing — no API tokens.
+Build, test, and release instructions are in [CONTRIBUTING.md](https://github.com/vigilonio/python/blob/main/CONTRIBUTING.md).
 
-- **Main releases**: every push to `main` runs `release-main.yml`, which bumps the patch version in lockstep (`pyproject.toml` + `uv.lock`), runs the tests, builds the wheel, smoke-tests it in a clean venv against a fake collector (`scripts/smoke_test.py`), publishes it to PyPI, then pushes the `chore(release): X.Y.Z` commit and the `vX.Y.Z` tag. A hand-set, not-yet-tagged version releases as-is instead of being bumped. Reruns are idempotent: a version counts as released once its tag exists, and files already on PyPI are skipped.
-- **PR betas**: `pr-beta.yml` builds every PR at a unique PEP 440 pre-release (`X.Y.(Z+1)b<PR>.dev<run>`), runs tests + smoke, and attaches the wheel to the workflow run. Betas never go to PyPI; to try a PR's code, install its git ref: `pip install "vigilon @ git+https://github.com/vigilonio/python@<sha>"`.
-- **`vigilon-sdk`** is a reserved, unused name on PyPI (`scripts/pypi-stub/vigilon-sdk`) that points users to `vigilon`.
+## License
+
+[ISC](https://github.com/vigilonio/python/blob/main/LICENSE)
