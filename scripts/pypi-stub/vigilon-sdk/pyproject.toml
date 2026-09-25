@@ -1,0 +1,34 @@
+# Defensive stub for the unused `vigilon-sdk` name on public PyPI. The real
+# SDK distribution is `vigilon`; keep this name reserved for brand protection.
+#
+# This stub exists only so nobody else can claim the name and serve a
+# malicious package to anyone who runs a bare `pip install vigilon-sdk`. It
+# ships a `vigilon_sdk` module (never `vigilon`, which would shadow the real
+# SDK) that fails loudly on import.
+#
+# One-time publish (needs the Vigilon PyPI account; do NOT publish real
+# releases here):
+#
+#     cd scripts/pypi-stub/vigilon-sdk
+#     uv build
+#     uv publish  # token via UV_PUBLISH_TOKEN
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vigilon-sdk"
+# 0.0.1-0.0.3 are published with stale text and a colliding `vigilon`
+# module; PyPI reserves used filenames forever, so every refresh needs a bump.
+version = "0.0.4"
+description = "Reserved by Vigilon. This distribution name is unused; install vigilon instead. See https://vigilon.io."
+readme = "README.md"
+license = "ISC"
+requires-python = ">=3.8"
+
+[project.urls]
+Homepage = "https://vigilon.io"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vigilon_sdk"]

@@ -1,0 +1,68 @@
+name: Publish PR Beta
+
+# Betas stay git refs — a PR build installs via
+# `pip install "vigilon @ git+https://github.com/vigilonio/python@<sha>"` —
+# so this workflow's job is to prove each PR builds, tests, and smoke-tests
+# as a distinguishable PEP 440 pre-release, and to attach the built wheel to
+# the run for manual installs.
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-beta-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  publish-beta:
+    # No fork guard: unlike the Node analog this workflow publishes nothing —
+    # read-only token, no secrets — so fork PRs can safely build too.
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Set beta version
+        run: |
+          current=$(uv version --short)
+          IFS=. read -r major minor patch <<< "$current"
+          # Next patch as a beta of this PR, unique per run: X.Y.(Z+1)bPR.devRUN.
+          beta="$major.$minor.$((patch + 1))b${{ github.event.pull_request.number }}.dev${{ github.run_number }}"
+          uv version "$beta"
+          echo "BETA_VERSION=$beta" >> "$GITHUB_ENV"
+
+      - name: Run tests
+        run: uv run pytest
+
+      - name: Build the distribution
+        run: uv build
+
+      - name: Smoke-test the built wheel
+        run: |
+          uv venv .smoke-venv
+          uv pip install --python .smoke-venv dist/*.whl
+          .smoke-venv/bin/python scripts/smoke_test.py
+
+      - name: Attach the beta wheel to the run
+        uses: actions/upload-artifact@v6
+        with:
+          name: vigilon-${{ env.BETA_VERSION }}
+          path: dist/

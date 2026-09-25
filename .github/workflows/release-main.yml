@@ -1,0 +1,86 @@
+name: Release Main
+
+# Publishes to PyPI via Trusted Publishing (OIDC — no API token; the PyPI
+# project trusts this workflow file + the `pypi` environment), then pushes the
+# release commit and the vX.Y.Z tag. A version counts as released once its
+# v-tag exists; PyPI files that already exist are skipped, so a rerun after a
+# failed push completes the release instead of re-uploading.
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: main-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: "${{ github.actor != 'github-actions[bot]' && !startsWith(github.event.head_commit.message, 'chore(release): ') }}"
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/vigilon/
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Version package
+        run: |
+          version=$(uv version --short)
+          # A hand-set, not-yet-released version releases as-is; otherwise
+          # bump the patch version (pyproject.toml + uv.lock in lockstep).
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            uv version --bump patch
+            version=$(uv version --short)
+            git commit -am "chore(release): $version"
+          fi
+          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Run tests
+        run: uv run pytest
+
+      - name: Build the distribution
+        run: uv build
+
+      - name: Smoke-test the built wheel
+        run: |
+          uv venv .smoke-venv
+          uv pip install --python .smoke-venv dist/*.whl
+          .smoke-venv/bin/python scripts/smoke_test.py
+
+      - name: Publish to PyPI
+        # PyPI filenames are permanent, so upload before tagging: a failed
+        # upload leaves no tag behind, and --check-url skips files that an
+        # earlier attempt already uploaded.
+        run: uv publish --trusted-publishing always --check-url https://pypi.org/simple/
+
+      - name: Push the release commit and tag
+        run: |
+          # An annotated tag, pushed explicitly by ref: `--follow-tags` only
+          # follows annotated tags, so a lightweight tag would silently never
+          # reach the remote — and the tag IS the registry here.
+          git rev-parse -q --verify "refs/tags/v$RELEASE_VERSION" >/dev/null \
+            || git tag -a "v$RELEASE_VERSION" -m "vigilon $RELEASE_VERSION"
+          git push origin main "refs/tags/v$RELEASE_VERSION"

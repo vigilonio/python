@@ -1,0 +1,114 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vigilon"
+version = "0.1.5"
+description = "Vigilon OpenTelemetry bootstrap for Python apps"
+readme = "README.md"
+license = "ISC"
+license-files = ["LICENSE"]
+authors = [{ name = "Vigilon" }]
+requires-python = ">=3.10"
+keywords = ["vigilon", "opentelemetry", "otel", "tracing", "observability", "apm", "monitoring"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Framework :: Django",
+    "Framework :: FastAPI",
+    "Framework :: Flask",
+    "Topic :: System :: Monitoring",
+    "Typing :: Typed",
+]
+# The OpenTelemetry core (1.x) and contrib (0.xbN) release lines are welded
+# together by exact pins inside the packages themselves (sdk -> semconv,
+# instrumentation-* -> instrumentation). Pin one matched pair here and bump
+# every line below in lockstep — loose ranges produce unresolvable installs.
+dependencies = [
+    "opentelemetry-api==1.44.0",
+    "opentelemetry-sdk==1.44.0",
+    "opentelemetry-exporter-otlp-proto-http==1.44.0",
+    "opentelemetry-instrumentation==0.65b0",
+    "opentelemetry-semantic-conventions==0.65b0",
+    "opentelemetry-util-http==0.65b0",
+    "opentelemetry-instrumentation-fastapi==0.65b0",
+    "opentelemetry-instrumentation-flask==0.65b0",
+    "opentelemetry-instrumentation-django==0.65b0",
+    "opentelemetry-instrumentation-asgi==0.65b0",
+    "opentelemetry-instrumentation-wsgi==0.65b0",
+    "opentelemetry-instrumentation-requests==0.65b0",
+    "opentelemetry-instrumentation-httpx==0.65b0",
+    "opentelemetry-instrumentation-urllib3==0.65b0",
+    "opentelemetry-instrumentation-aiohttp-client==0.65b0",
+    "opentelemetry-instrumentation-psycopg==0.65b0",
+    "opentelemetry-instrumentation-psycopg2==0.65b0",
+    "opentelemetry-instrumentation-mysql==0.65b0",
+    "opentelemetry-instrumentation-pymysql==0.65b0",
+    "opentelemetry-instrumentation-mysqlclient==0.65b0",
+    "opentelemetry-instrumentation-redis==0.65b0",
+    "opentelemetry-instrumentation-pymongo==0.65b0",
+    "opentelemetry-instrumentation-sqlalchemy==0.65b0",
+    "opentelemetry-instrumentation-aws-lambda==0.65b0",
+]
+
+[project.urls]
+Homepage = "https://vigilon.io"
+Repository = "https://github.com/vigilonio/python"
+Issues = "https://github.com/vigilonio/python/issues"
+
+# Zero-code bootstrap: `opentelemetry-instrument python app.py` discovers the
+# distro (env defaults + instrumentation policy) and the configurator (builds
+# the Vigilon trace pipeline from VIGILON_* env vars) through these hooks.
+[project.entry-points.opentelemetry_distro]
+vigilon = "vigilon._distro:VigilonDistro"
+
+[project.entry-points.opentelemetry_configurator]
+vigilon = "vigilon._distro:VigilonConfigurator"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "fastapi>=0.115",
+    "flask>=3.0",
+    "django>=4.2",
+    "httpx>=0.27",
+    "pymysql>=1.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vigilon"]
+
+[tool.hatch.build.targets.sdist]
+only-include = ["src", "tests", "LICENSE", "README.md", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+extend-select = ["I", "UP", "B"]
+
+[tool.mypy]
+files = ["src"]
+disallow_untyped_defs = true
+check_untyped_defs = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = "opentelemetry.instrumentation.*"
+ignore_missing_imports = true
