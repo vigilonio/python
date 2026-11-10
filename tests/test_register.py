@@ -131,14 +131,14 @@ def test_orders_processors_around_the_batch_processor(registration):
     assert processors[3] is appended
 
 
-def test_sends_the_api_key_as_a_bearer_token_to_the_default_endpoint(registration):
+def test_sends_the_api_key_as_a_bearer_token_to_the_default_endpoint(registration, exporter_kwargs):
     provider = register(api_key="secret", app_name="svc", environment="dev")
 
     exporter = next(
         p for p in span_processors(provider) if isinstance(p, BatchSpanProcessor)
     ).span_exporter
     assert exporter._endpoint == f"{DEFAULT_OTEL_ENDPOINT}/v1/traces"
-    assert exporter._headers["Authorization"] == "Bearer secret"
+    assert exporter_kwargs["headers"] == {"Authorization": "Bearer secret"}
 
 
 def test_strips_trailing_slashes_from_a_custom_endpoint(registration):
