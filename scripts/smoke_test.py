@@ -53,9 +53,9 @@ def main():
 
     provider = vigilon.register(
         api_key="smoke-key",
-        service_name="smoke-service",
+        app_name="smoke-service",
         environment="smoke",
-        service_version="0.0.0",
+        app_version="0.0.0",
         otel_endpoint=endpoint,
     )
     if provider is None:

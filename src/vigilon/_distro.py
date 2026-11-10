@@ -77,9 +77,11 @@ class VigilonDistro(BaseDistro):
 class VigilonConfigurator:
     """Builds the Vigilon trace pipeline from ``VIGILON_*`` environment variables.
 
-    Requires ``VIGILON_API_KEY``, ``VIGILON_SERVICE_NAME``, and
-    ``VIGILON_ENVIRONMENT``; ``VIGILON_SERVICE_VERSION`` is recommended and
-    warns when missing. Instrumentation itself is left to the
+    Requires ``VIGILON_API_KEY``, ``VIGILON_APP_NAME``, and
+    ``VIGILON_ENVIRONMENT``; ``VIGILON_APP_VERSION`` is recommended and warns
+    when missing. The deprecated ``VIGILON_SERVICE_NAME`` and
+    ``VIGILON_SERVICE_VERSION`` are read, with a warning, when the new
+    variables are unset. Instrumentation itself is left to the
     auto-instrumentation loop that runs right after configurators.
     """
 

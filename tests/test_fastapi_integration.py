@@ -42,7 +42,7 @@ def make_app():
 def test_requests_produce_new_semconv_server_spans_and_skip_excluded_urls(registration, exporter):
     register(
         api_key="key",
-        service_name="svc",
+        app_name="svc",
         environment="dev",
         excluded_urls=["/stream$"],
     )
@@ -64,7 +64,7 @@ def test_requests_produce_new_semconv_server_spans_and_skip_excluded_urls(regist
 
 
 def test_record_error_attaches_the_exception_to_the_server_span(registration, exporter):
-    register(api_key="key", service_name="svc", environment="dev")
+    register(api_key="key", app_name="svc", environment="dev")
 
     with TestClient(make_app()) as client:
         assert client.get("/handled-failure").status_code == 500

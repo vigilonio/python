@@ -70,9 +70,9 @@ def test_opentelemetry_instrument_exports_traces_with_only_vigilon_env_vars(coll
     }
     env.update(
         VIGILON_API_KEY="zero-code-key",
-        VIGILON_SERVICE_NAME="zero-code-service",
+        VIGILON_APP_NAME="zero-code-service",
         VIGILON_ENVIRONMENT="test",
-        VIGILON_SERVICE_VERSION="0.0.1",
+        VIGILON_APP_VERSION="0.0.1",
         VIGILON_OTEL_ENDPOINT=collector,
     )
 

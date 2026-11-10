@@ -26,6 +26,11 @@ DEFAULT_OTEL_ENDPOINT = "https://ingest.vigilon.io"
 # semantics), which is why they anchor on the end of the path, not the start.
 DEFAULT_EXCLUDED_URLS = ("/health$", "/ready$", "/favicon\\.ico$")
 
+# service_name/service_version (and their VIGILON_SERVICE_* variables) were
+# renamed to app_name/app_version once Vigilon covered frontend apps too. The
+# old names keep working, with a warning, until this release.
+_RENAMED_SETTINGS_REMOVED_IN = "0.2.0"
+
 # The zero-code bootstrap (vigilon._distro) and an in-process register() call
 # must not start two SDKs; the guard makes the second call warn and no-op.
 _registered = False
@@ -55,12 +60,14 @@ class SpanProcessorExtensions:
 def register(
     *,
     api_key: str,
-    service_name: str,
+    app_name: str | None = None,
     environment: str,
-    service_version: str | None = None,
+    app_version: str | None = None,
     otel_endpoint: str | None = None,
     excluded_urls: Sequence[str] | None = None,
     extend_span_processors: Callable[[SpanProcessorContext], SpanProcessorExtensions] | None = None,
+    service_name: str | None = None,
+    service_version: str | None = None,
 ) -> TracerProvider | None:
     """Start the Vigilon SDK: OTLP trace export plus auto-instrumentation.
 
@@ -74,22 +81,37 @@ def register(
     tracked/instrumented. ``VIGILON_EXCLUDED_URLS`` (comma-separated) is
     merged the same way.
 
+    ``app_name`` is required: it is the name this app reports as, shown as its
+    Service in Vigilon, and is exported as the ``service.name`` resource
+    attribute. ``app_version`` is the release (``service.version``); optional,
+    but recommended for deploy tracking.
+
+    ``service_name`` and ``service_version`` are deprecated aliases of
+    ``app_name`` and ``app_version``, removed in 0.2.0. They are used, with a
+    warning, only when the new argument is not set.
+
     Idempotent: if Vigilon has already been started in this process, the call
     warns and returns ``None`` instead of starting a second SDK.
     """
+    # app_name is optional in the signature only while service_name is
+    # accepted in its place; it becomes required when service_name is removed.
+    resolved_app_name = _renamed_setting("app_name", app_name, "service_name", service_name)
+    resolved_app_version = _renamed_setting(
+        "app_version", app_version, "service_version", service_version
+    )
+    if resolved_app_name is None:
+        raise TypeError("register() missing required keyword argument: 'app_name'")
+
     return _guarded_start(
         api_key=api_key,
-        service_name=service_name,
+        app_name=resolved_app_name,
         environment=environment,
-        service_version=service_version,
+        app_version=resolved_app_version,
         otel_endpoint=otel_endpoint,
         excluded_urls=excluded_urls,
         extend_span_processors=extend_span_processors,
         instrument=True,
     )
-
-
-_REQUIRED_ENV_VARS = ("VIGILON_API_KEY", "VIGILON_SERVICE_NAME", "VIGILON_ENVIRONMENT")
 
 
 def _register_from_environment() -> TracerProvider | None:
@@ -100,27 +122,45 @@ def _register_from_environment() -> TracerProvider | None:
     instrumentation right after the configurator runs, so instrumenting here
     as well would instrument everything twice.
     """
-    values = {name: (os.environ.get(name) or "").strip() for name in _REQUIRED_ENV_VARS}
-    missing = [name for name, value in values.items() if not value]
-    if missing:
+    api_key = _env("VIGILON_API_KEY")
+    environment = _env("VIGILON_ENVIRONMENT")
+    app_name = _renamed_setting(
+        "VIGILON_APP_NAME",
+        _env("VIGILON_APP_NAME"),
+        "VIGILON_SERVICE_NAME",
+        _env("VIGILON_SERVICE_NAME"),
+    )
+    app_version = _renamed_setting(
+        "VIGILON_APP_VERSION",
+        _env("VIGILON_APP_VERSION"),
+        "VIGILON_SERVICE_VERSION",
+        _env("VIGILON_SERVICE_VERSION"),
+    )
+
+    required = {
+        "VIGILON_API_KEY": api_key,
+        "VIGILON_APP_NAME": app_name,
+        "VIGILON_ENVIRONMENT": environment,
+    }
+    missing = [name for name, value in required.items() if not value]
+    if missing or app_name is None:  # the second check narrows the type for mypy
         raise RuntimeError(
             "The Vigilon zero-code bootstrap requires the VIGILON_API_KEY, "
-            "VIGILON_SERVICE_NAME, and VIGILON_ENVIRONMENT environment variables; "
+            "VIGILON_APP_NAME, and VIGILON_ENVIRONMENT environment variables; "
             f"missing: {', '.join(missing)}."
         )
 
-    service_version = (os.environ.get("VIGILON_SERVICE_VERSION") or "").strip() or None
-    if service_version is None:
+    if app_version is None:
         _logger.warning(
-            "Vigilon recommends setting VIGILON_SERVICE_VERSION to track new "
+            "Vigilon recommends setting VIGILON_APP_VERSION to track new "
             "deployments and generate better insights."
         )
 
     return _guarded_start(
-        api_key=values["VIGILON_API_KEY"],
-        service_name=values["VIGILON_SERVICE_NAME"],
-        environment=values["VIGILON_ENVIRONMENT"],
-        service_version=service_version,
+        api_key=api_key,
+        app_name=app_name,
+        environment=environment,
+        app_version=app_version,
         otel_endpoint=None,  # VIGILON_OTEL_ENDPOINT is read by _resolve_endpoint
         excluded_urls=None,  # VIGILON_EXCLUDED_URLS is folded in by the distro
         extend_span_processors=None,
@@ -128,12 +168,48 @@ def _register_from_environment() -> TracerProvider | None:
     )
 
 
+def _env(name: str) -> str:
+    return (os.environ.get(name) or "").strip()
+
+
+def _is_set(value: str | None) -> bool:
+    return value is not None and bool(value.strip())
+
+
+def _renamed_setting(
+    current: str, current_value: str | None, old: str, old_value: str | None
+) -> str | None:
+    """Resolve a renamed setting: the current name wins over the deprecated one.
+
+    Warns once when the deprecated setting is set — to rename it, or to remove
+    it when the current one is set too and takes priority. Blank values count
+    as unset.
+    """
+    if _is_set(old_value):
+        if _is_set(current_value):
+            _logger.warning(
+                "Vigilon: %s is deprecated and ignored because %s is set. Remove %s.",
+                old,
+                current,
+                old,
+            )
+        else:
+            _logger.warning(
+                "Vigilon: %s is deprecated and will be removed in %s. Rename it to %s.",
+                old,
+                _RENAMED_SETTINGS_REMOVED_IN,
+                current,
+            )
+            return old_value
+    return current_value if _is_set(current_value) else None
+
+
 def _guarded_start(
     *,
     api_key: str,
-    service_name: str,
+    app_name: str,
     environment: str,
-    service_version: str | None,
+    app_version: str | None,
     otel_endpoint: str | None,
     excluded_urls: Sequence[str] | None,
     extend_span_processors: Callable[[SpanProcessorContext], SpanProcessorExtensions] | None,
@@ -151,9 +227,9 @@ def _guarded_start(
     try:
         return _start_sdk(
             api_key=api_key,
-            service_name=service_name,
+            app_name=app_name,
             environment=environment,
-            service_version=service_version,
+            app_version=app_version,
             otel_endpoint=otel_endpoint,
             excluded_urls=excluded_urls,
             extend_span_processors=extend_span_processors,
@@ -169,9 +245,9 @@ def _guarded_start(
 def _start_sdk(
     *,
     api_key: str,
-    service_name: str,
+    app_name: str,
     environment: str,
-    service_version: str | None,
+    app_version: str | None,
     otel_endpoint: str | None,
     excluded_urls: Sequence[str] | None,
     extend_span_processors: Callable[[SpanProcessorContext], SpanProcessorExtensions] | None,
@@ -181,12 +257,14 @@ def _start_sdk(
 
     endpoint = _resolve_endpoint(otel_endpoint)
 
+    # The app name and version keep their OpenTelemetry attribute names, so
+    # renaming the settings left existing Services and error groups intact.
     resource_attributes = {
-        "service.name": service_name,
+        "service.name": app_name,
         "deployment.environment": environment,
     }
-    if service_version is not None:
-        resource_attributes["service.version"] = service_version
+    if app_version is not None:
+        resource_attributes["service.version"] = app_version
 
     trace_exporter = OTLPSpanExporter(
         endpoint=f"{endpoint}/v1/traces",
