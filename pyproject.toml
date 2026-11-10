@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vigilon"
-version = "0.1.7"
+version = "0.1.8"
 description = "Vigilon OpenTelemetry bootstrap for Python apps"
 readme = "README.md"
 license = "ISC"
