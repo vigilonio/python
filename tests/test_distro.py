@@ -151,10 +151,12 @@ class TestVigilonConfigurator:
         clean_env.setenv("VIGILON_APP_VERSION", "1.2.3")
         return clean_env
 
-    def test_builds_the_vigilon_pipeline_from_the_environment(self, registration, env):
+    def test_builds_the_vigilon_pipeline_from_the_environment(
+        self, registration, env, exporter_kwargs
+    ):
         env.setenv("VIGILON_OTEL_ENDPOINT", "http://collector:4318")
 
-        VigilonConfigurator().configure(auto_instrumentation_version="0.65b0")
+        VigilonConfigurator().configure(auto_instrumentation_version="0.66b2")
 
         provider = registration["provider"]
         attributes = provider.resource.attributes
@@ -167,7 +169,7 @@ class TestVigilonConfigurator:
             if isinstance(p, BatchSpanProcessor)
         ).span_exporter
         assert exporter._endpoint == "http://collector:4318/v1/traces"
-        assert exporter._headers["Authorization"] == "Bearer secret"
+        assert exporter_kwargs["headers"] == {"Authorization": "Bearer secret"}
 
     def test_does_not_instrument(self, registration, env):
         # Under opentelemetry-instrument the entry-point loop instruments right

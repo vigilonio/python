@@ -67,3 +67,22 @@ def registration(monkeypatch):
     )
     yield captured
     _uninstrument_everything()
+
+
+@pytest.fixture
+def exporter_kwargs(monkeypatch) -> dict:
+    """Record the arguments register() builds the OTLP span exporter with.
+
+    Asserting on what vigilon passes in, rather than on the exporter's private
+    attributes, keeps these tests stable across OpenTelemetry releases (1.45
+    moved the headers into a separate transport client).
+    """
+    captured: dict = {}
+    real_exporter = register_module.OTLPSpanExporter
+
+    def spy(**kwargs):
+        captured.update(kwargs)
+        return real_exporter(**kwargs)
+
+    monkeypatch.setattr(register_module, "OTLPSpanExporter", spy)
+    return captured
