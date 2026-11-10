@@ -39,9 +39,9 @@ import vigilon
 
 vigilon.register(
     api_key="your-api-key",
-    service_name="your-service-name",
+    app_name="your-app-name",
     environment="production",
-    service_version="1.2.3",  # optional, recommended for deploy tracking
+    app_version="1.2.3",  # optional, recommended for deploy tracking
 )
 
 from app import create_app  # import your app AFTER register()
@@ -54,7 +54,13 @@ Optional environment variables:
 - `VIGILON_OTEL_ENDPOINT` — override the OTLP HTTP base endpoint (traces go to `<endpoint>/v1/traces`); useful for local collectors and tests.
 - `VIGILON_EXCLUDED_URLS` — extra excluded-URL regexes, comma-separated (see below).
 
+The app name is what Vigilon shows as the app's Service, and the version is the release used for deploy tracking. They are exported as the OpenTelemetry `service.name` and `service.version` resource attributes.
+
 Full product documentation is at [vigilon.io/docs](https://vigilon.io/docs).
+
+### Renamed settings
+
+The `register()` arguments `service_name` and `service_version` were renamed to `app_name` and `app_version`, and the `VIGILON_SERVICE_NAME` and `VIGILON_SERVICE_VERSION` environment variables to `VIGILON_APP_NAME` and `VIGILON_APP_VERSION`. The old names still work until 0.2.0, ranked just below their replacements, and Vigilon logs a warning on startup for each one that is set. The value sent to Vigilon is unchanged, so the app keeps its Service and error groups when you rename.
 
 ## Zero-code bootstrap
 
@@ -62,18 +68,18 @@ If you cannot (or would rather not) touch the entrypoint, launch the app under `
 
 ```bash
 VIGILON_API_KEY=your-api-key \
-VIGILON_SERVICE_NAME=your-service-name \
+VIGILON_APP_NAME=your-app-name \
 VIGILON_ENVIRONMENT=production \
-VIGILON_SERVICE_VERSION=1.2.3 \
+VIGILON_APP_VERSION=1.2.3 \
 opentelemetry-instrument python app.py
 ```
 
 | Variable | Meaning |
 |---|---|
 | `VIGILON_API_KEY` | **Required.** Your Vigilon API key. |
-| `VIGILON_SERVICE_NAME` | **Required.** Service name shown in Vigilon. |
+| `VIGILON_APP_NAME` | **Required.** App name, shown as the app's Service in Vigilon. |
 | `VIGILON_ENVIRONMENT` | **Required.** Deployment environment (`production`, `staging`, …). |
-| `VIGILON_SERVICE_VERSION` | Recommended — enables deploy tracking; the SDK warns when missing. |
+| `VIGILON_APP_VERSION` | Recommended — enables deploy tracking; the SDK warns when missing. |
 | `VIGILON_OTEL_ENDPOINT` | Optional OTLP endpoint override. |
 | `VIGILON_EXCLUDED_URLS` | Optional extra excluded-URL regexes, comma-separated. |
 
@@ -118,7 +124,7 @@ The SDK's exporter runs a background thread that does not survive `fork()`. Call
 def post_fork(server, worker):
     import vigilon
 
-    vigilon.register(api_key=..., service_name=..., environment=...)
+    vigilon.register(api_key=..., app_name=..., environment=...)
 ```
 
 ```python
@@ -130,7 +136,7 @@ from uwsgidecorators import postfork
 def start_vigilon():
     import vigilon
 
-    vigilon.register(api_key=..., service_name=..., environment=...)
+    vigilon.register(api_key=..., app_name=..., environment=...)
 ```
 
 ```python
@@ -142,7 +148,7 @@ from celery.signals import worker_process_init
 def start_vigilon(**kwargs):
     import vigilon
 
-    vigilon.register(api_key=..., service_name=..., environment=...)
+    vigilon.register(api_key=..., app_name=..., environment=...)
 ```
 
 ## Excluded URLs

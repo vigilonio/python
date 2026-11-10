@@ -25,8 +25,10 @@ def clean_env(monkeypatch):
         "OTEL_PYTHON_EXCLUDED_URLS",
         "VIGILON_EXCLUDED_URLS",
         "VIGILON_API_KEY",
-        "VIGILON_SERVICE_NAME",
+        "VIGILON_APP_NAME",
         "VIGILON_ENVIRONMENT",
+        "VIGILON_APP_VERSION",
+        "VIGILON_SERVICE_NAME",
         "VIGILON_SERVICE_VERSION",
         "VIGILON_OTEL_ENDPOINT",
         *EXCLUDED_URL_ENV_VARS,
@@ -144,9 +146,9 @@ class TestVigilonConfigurator:
     @pytest.fixture
     def env(self, clean_env):
         clean_env.setenv("VIGILON_API_KEY", "secret")
-        clean_env.setenv("VIGILON_SERVICE_NAME", "svc")
+        clean_env.setenv("VIGILON_APP_NAME", "svc")
         clean_env.setenv("VIGILON_ENVIRONMENT", "production")
-        clean_env.setenv("VIGILON_SERVICE_VERSION", "1.2.3")
+        clean_env.setenv("VIGILON_APP_VERSION", "1.2.3")
         return clean_env
 
     def test_builds_the_vigilon_pipeline_from_the_environment(self, registration, env):
@@ -176,21 +178,91 @@ class TestVigilonConfigurator:
 
         assert not FastAPIInstrumentor().is_instrumented_by_opentelemetry
 
-    def test_warns_when_the_service_version_is_missing(self, registration, env, caplog):
-        env.delenv("VIGILON_SERVICE_VERSION")
+    def test_warns_when_the_app_version_is_missing(self, registration, env, caplog):
+        env.delenv("VIGILON_APP_VERSION")
 
         with caplog.at_level(logging.WARNING, logger="vigilon"):
             VigilonConfigurator().configure()
 
-        assert "VIGILON_SERVICE_VERSION" in caplog.text
+        assert "VIGILON_APP_VERSION" in caplog.text
         assert "service.version" not in registration["provider"].resource.attributes
+
+    def test_does_not_warn_about_deprecations_when_only_the_new_names_are_set(
+        self, registration, env, caplog
+    ):
+        with caplog.at_level(logging.WARNING, logger="vigilon"):
+            VigilonConfigurator().configure()
+
+        assert "deprecated" not in caplog.text
+
+    def test_reads_the_deprecated_service_variables_and_says_to_rename_them(
+        self, registration, env, caplog
+    ):
+        env.delenv("VIGILON_APP_NAME")
+        env.delenv("VIGILON_APP_VERSION")
+        env.setenv("VIGILON_SERVICE_NAME", "old-svc")
+        env.setenv("VIGILON_SERVICE_VERSION", "0.9")
+
+        with caplog.at_level(logging.WARNING, logger="vigilon"):
+            VigilonConfigurator().configure()
+
+        attributes = registration["provider"].resource.attributes
+        assert attributes["service.name"] == "old-svc"
+        assert attributes["service.version"] == "0.9"
+        assert caplog.messages == [
+            (
+                "Vigilon: VIGILON_SERVICE_NAME is deprecated and will be removed in 0.2.0. "
+                "Rename it to VIGILON_APP_NAME."
+            ),
+            (
+                "Vigilon: VIGILON_SERVICE_VERSION is deprecated and will be removed in 0.2.0. "
+                "Rename it to VIGILON_APP_VERSION."
+            ),
+        ]
+
+    def test_ignores_the_deprecated_service_variables_when_the_new_ones_are_set(
+        self, registration, env, caplog
+    ):
+        env.setenv("VIGILON_SERVICE_NAME", "old-svc")
+        env.setenv("VIGILON_SERVICE_VERSION", "0.9")
+
+        with caplog.at_level(logging.WARNING, logger="vigilon"):
+            VigilonConfigurator().configure()
+
+        attributes = registration["provider"].resource.attributes
+        assert attributes["service.name"] == "svc"
+        assert attributes["service.version"] == "1.2.3"
+        assert caplog.messages == [
+            (
+                "Vigilon: VIGILON_SERVICE_NAME is deprecated and ignored because "
+                "VIGILON_APP_NAME is set. Remove VIGILON_SERVICE_NAME."
+            ),
+            (
+                "Vigilon: VIGILON_SERVICE_VERSION is deprecated and ignored because "
+                "VIGILON_APP_VERSION is set. Remove VIGILON_SERVICE_VERSION."
+            ),
+        ]
+
+    def test_does_not_count_blank_deprecated_variables_as_set(self, registration, env, caplog):
+        env.setenv("VIGILON_SERVICE_NAME", " ")
+
+        with caplog.at_level(logging.WARNING, logger="vigilon"):
+            VigilonConfigurator().configure()
+
+        assert "deprecated" not in caplog.text
+
+    def test_names_the_new_app_name_variable_when_no_name_is_set(self, registration, env):
+        env.delenv("VIGILON_APP_NAME")
+
+        with pytest.raises(RuntimeError, match="missing: VIGILON_APP_NAME"):
+            VigilonConfigurator().configure()
 
     def test_requires_the_vigilon_environment_variables(self, registration, clean_env):
         with pytest.raises(RuntimeError, match="VIGILON_API_KEY"):
             VigilonConfigurator().configure()
 
         # A refused configure must not poison the guard for register().
-        assert register(api_key="key", service_name="svc", environment="dev") is not None
+        assert register(api_key="key", app_name="svc", environment="dev") is not None
 
     def test_a_register_call_after_the_configurator_warns_and_noops(
         self, registration, env, caplog
@@ -198,7 +270,7 @@ class TestVigilonConfigurator:
         VigilonConfigurator().configure()
 
         with caplog.at_level(logging.WARNING, logger="vigilon"):
-            second = register(api_key="key", service_name="svc", environment="dev")
+            second = register(api_key="key", app_name="svc", environment="dev")
 
         assert second is None
         assert "already registered" in caplog.text

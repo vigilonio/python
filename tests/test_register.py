@@ -20,9 +20,9 @@ def span_processors(provider: TracerProvider):
 def test_builds_a_provider_with_the_vigilon_resource_attributes(registration):
     provider = register(
         api_key="key",
-        service_name="svc",
+        app_name="svc",
         environment="production",
-        service_version="1.2.3",
+        app_version="1.2.3",
     )
 
     assert provider is registration["provider"]
@@ -32,10 +32,77 @@ def test_builds_a_provider_with_the_vigilon_resource_attributes(registration):
     assert attributes["service.version"] == "1.2.3"
 
 
-def test_omits_service_version_when_not_provided(registration):
-    provider = register(api_key="key", service_name="svc", environment="dev")
+def test_omits_the_app_version_when_not_provided(registration):
+    provider = register(api_key="key", app_name="svc", environment="dev")
 
     assert "service.version" not in provider.resource.attributes
+
+
+def test_does_not_warn_about_deprecations_when_only_the_new_names_are_used(registration, caplog):
+    with caplog.at_level(logging.WARNING, logger="vigilon"):
+        register(api_key="key", app_name="svc", environment="dev", app_version="1")
+
+    assert "deprecated" not in caplog.text
+
+
+def test_uses_the_deprecated_service_arguments_and_says_to_rename_them(registration, caplog):
+    with caplog.at_level(logging.WARNING, logger="vigilon"):
+        provider = register(
+            api_key="key", service_name="old-svc", environment="dev", service_version="0.9"
+        )
+
+    attributes = provider.resource.attributes
+    assert attributes["service.name"] == "old-svc"
+    assert attributes["service.version"] == "0.9"
+    assert caplog.messages == [
+        "Vigilon: service_name is deprecated and will be removed in 0.2.0. Rename it to app_name.",
+        (
+            "Vigilon: service_version is deprecated and will be removed in 0.2.0. "
+            "Rename it to app_version."
+        ),
+    ]
+
+
+def test_ignores_the_deprecated_service_arguments_when_the_new_ones_are_set(registration, caplog):
+    with caplog.at_level(logging.WARNING, logger="vigilon"):
+        provider = register(
+            api_key="key",
+            app_name="new-svc",
+            service_name="old-svc",
+            environment="dev",
+            app_version="2",
+            service_version="1",
+        )
+
+    attributes = provider.resource.attributes
+    assert attributes["service.name"] == "new-svc"
+    assert attributes["service.version"] == "2"
+    assert caplog.messages == [
+        (
+            "Vigilon: service_name is deprecated and ignored because app_name is set. "
+            "Remove service_name."
+        ),
+        (
+            "Vigilon: service_version is deprecated and ignored because app_version is set. "
+            "Remove service_version."
+        ),
+    ]
+
+
+def test_does_not_count_blank_deprecated_arguments_as_set(registration, caplog):
+    with caplog.at_level(logging.WARNING, logger="vigilon"):
+        register(api_key="key", app_name="svc", environment="dev", service_version="")
+
+    assert "deprecated" not in caplog.text
+
+
+@pytest.mark.parametrize("app_name", [None, " "])
+def test_requires_an_app_name(registration, app_name):
+    with pytest.raises(TypeError, match="'app_name'"):
+        register(api_key="key", app_name=app_name, environment="dev")
+
+    # A refused call must not poison the guard.
+    assert register(api_key="key", app_name="svc", environment="dev") is not None
 
 
 def test_orders_processors_around_the_batch_processor(registration):
@@ -51,7 +118,7 @@ def test_orders_processors_around_the_batch_processor(registration):
 
     provider = register(
         api_key="key",
-        service_name="svc",
+        app_name="svc",
         environment="dev",
         extend_span_processors=extend,
     )
@@ -65,7 +132,7 @@ def test_orders_processors_around_the_batch_processor(registration):
 
 
 def test_sends_the_api_key_as_a_bearer_token_to_the_default_endpoint(registration):
-    provider = register(api_key="secret", service_name="svc", environment="dev")
+    provider = register(api_key="secret", app_name="svc", environment="dev")
 
     exporter = next(
         p for p in span_processors(provider) if isinstance(p, BatchSpanProcessor)
@@ -77,7 +144,7 @@ def test_sends_the_api_key_as_a_bearer_token_to_the_default_endpoint(registratio
 def test_strips_trailing_slashes_from_a_custom_endpoint(registration):
     provider = register(
         api_key="key",
-        service_name="svc",
+        app_name="svc",
         environment="dev",
         otel_endpoint="http://localhost:4318//",
     )
@@ -91,7 +158,7 @@ def test_strips_trailing_slashes_from_a_custom_endpoint(registration):
 def test_reads_the_endpoint_from_the_environment_when_not_passed(registration, monkeypatch):
     monkeypatch.setenv("VIGILON_OTEL_ENDPOINT", "http://collector:4318")
 
-    provider = register(api_key="key", service_name="svc", environment="dev")
+    provider = register(api_key="key", app_name="svc", environment="dev")
 
     exporter = next(
         p for p in span_processors(provider) if isinstance(p, BatchSpanProcessor)
@@ -100,10 +167,10 @@ def test_reads_the_endpoint_from_the_environment_when_not_passed(registration, m
 
 
 def test_second_register_call_warns_and_noops(registration, caplog):
-    first = register(api_key="key", service_name="svc", environment="dev")
+    first = register(api_key="key", app_name="svc", environment="dev")
 
     with caplog.at_level(logging.WARNING, logger="vigilon"):
-        second = register(api_key="key", service_name="svc", environment="dev")
+        second = register(api_key="key", app_name="svc", environment="dev")
 
     assert first is not None
     assert second is None
@@ -117,18 +184,18 @@ def test_a_failed_start_does_not_poison_the_guard(registration):
     with pytest.raises(RuntimeError, match="seam exploded"):
         register(
             api_key="key",
-            service_name="svc",
+            app_name="svc",
             environment="dev",
             extend_span_processors=broken_seam,
         )
 
-    assert register(api_key="key", service_name="svc", environment="dev") is not None
+    assert register(api_key="key", app_name="svc", environment="dev") is not None
 
 
 def test_opts_into_stable_http_semconv(registration, monkeypatch):
     monkeypatch.delenv("OTEL_SEMCONV_STABILITY_OPT_IN", raising=False)
 
-    register(api_key="key", service_name="svc", environment="dev")
+    register(api_key="key", app_name="svc", environment="dev")
 
     import os
 
@@ -138,7 +205,7 @@ def test_opts_into_stable_http_semconv(registration, monkeypatch):
 def test_respects_a_preexisting_http_dup_opt_in(registration, monkeypatch):
     monkeypatch.setenv("OTEL_SEMCONV_STABILITY_OPT_IN", "http/dup")
 
-    register(api_key="key", service_name="svc", environment="dev")
+    register(api_key="key", app_name="svc", environment="dev")
 
     import os
 
@@ -150,7 +217,7 @@ def test_merges_http_into_an_existing_semconv_opt_in(registration, monkeypatch):
     # stable HTTP attributes the collector's spanmetrics are keyed on.
     monkeypatch.setenv("OTEL_SEMCONV_STABILITY_OPT_IN", "database")
 
-    register(api_key="key", service_name="svc", environment="dev")
+    register(api_key="key", app_name="svc", environment="dev")
 
     import os
 
@@ -160,7 +227,7 @@ def test_merges_http_into_an_existing_semconv_opt_in(registration, monkeypatch):
 def test_instruments_fastapi_when_installed(registration):
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
-    register(api_key="key", service_name="svc", environment="dev")
+    register(api_key="key", app_name="svc", environment="dev")
 
     assert FastAPIInstrumentor().is_instrumented_by_opentelemetry
 
@@ -168,7 +235,7 @@ def test_instruments_fastapi_when_installed(registration):
 def test_instruments_pymysql_when_installed(registration):
     from opentelemetry.instrumentation.pymysql import PyMySQLInstrumentor
 
-    register(api_key="key", service_name="svc", environment="dev")
+    register(api_key="key", app_name="svc", environment="dev")
 
     assert PyMySQLInstrumentor().is_instrumented_by_opentelemetry
 
@@ -176,7 +243,7 @@ def test_instruments_pymysql_when_installed(registration):
 def test_instruments_flask_when_installed(registration):
     from opentelemetry.instrumentation.flask import FlaskInstrumentor
 
-    register(api_key="key", service_name="svc", environment="dev")
+    register(api_key="key", app_name="svc", environment="dev")
 
     assert FlaskInstrumentor().is_instrumented_by_opentelemetry
 
@@ -189,7 +256,7 @@ def test_skips_django_when_no_settings_module_is_configured(registration, monkey
 
     monkeypatch.delenv("DJANGO_SETTINGS_MODULE", raising=False)
 
-    register(api_key="key", service_name="svc", environment="dev")
+    register(api_key="key", app_name="svc", environment="dev")
 
     assert not DjangoInstrumentor().is_instrumented_by_opentelemetry
 
@@ -199,7 +266,7 @@ def test_instruments_django_when_a_settings_module_is_configured(registration, m
 
     monkeypatch.setenv("DJANGO_SETTINGS_MODULE", "django_settings")
 
-    register(api_key="key", service_name="svc", environment="dev")
+    register(api_key="key", app_name="svc", environment="dev")
 
     assert DjangoInstrumentor().is_instrumented_by_opentelemetry
 
